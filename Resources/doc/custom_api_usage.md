@@ -1,9 +1,8 @@
 # Custom api usage
 
-Sometime you asked to store payment gateway credentials to database.
-That's required to allow an admin change them quickly in the site backend.
-By default payum use container parameters to store such information and
-here in this chapter we would show how to use custom api.
+Sometime you asked to store payment gateway credentials to database. 
+If this is your case read [Configure payment in backend](configure-payment-in-backend.md) chapter.
+Here we would describe how you can add an api defined as service.
 
 ## Api factory
 
@@ -38,7 +37,7 @@ class Factory
      */
     public function createPaypalExpressCheckoutApi()
     {
-        return new Api($this->container->get('payum.buzz.client'), array(
+        return new Api(array(
             'username' => $this->container->getParameter('paypal.express_checkout.username'),
             'password' => $this->container->getParameter('paypal.express_checkout.password'),
             'signature' => $this->container->getParameter('paypal.express_checkout.signature'),
@@ -76,15 +75,13 @@ When we are done we can tell payum to use this service instead of default one:
 # app/config/config.yml
 
 payum:
-    payments:
-        your_payment_name_here:
+    gateways:
+        your_gateway_name_here:
             paypal_express_checkout_nvp:
-                api:
-                    options:
-                        username:  NOT USED
-                        password:  NOT USED
-                        signature: NOT USED
-                        sandbox: true
+                username:  NOT USED
+                password:  NOT USED
+                signature: NOT USED
+                sandbox: true
                 apis:
                     - acme.payment.payum.paypal_express_checkout_api
 
@@ -92,4 +89,12 @@ payum:
 
 That's it!
 
-Back to [index](index.md).
+* [Custom purchase examples](custom_purchase_examples.md).
+* [Configure payment in backend](configure-payment-in-backend.md)
+* [Done action](purchase_done_action.md)
+* [Sandbox](sandbox.md)
+* [Console commands](console_commands.md)
+* [Debugging](debugging.md)
+* [Container tags](container_tags.md).
+* [Payment configurations](configuration_reference.md)
+* [Back to index](index.md).

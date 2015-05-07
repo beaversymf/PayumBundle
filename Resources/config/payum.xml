@@ -3,21 +3,27 @@
 <container xmlns="http://symfony.com/schema/dic/services"
            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
            xsi:schemaLocation="http://symfony.com/schema/dic/services http://symfony.com/schema/dic/services/services-1.0.xsd">
+    
+    <parameters>
+        <parameter key="payum.available_gateway_factories" type="collection" />
+    </parameters>
 
     <services>
         <!-- Generic -->
 
-        <service id="payum" class="Payum\Bundle\PayumBundle\Registry\ContainerAwareRegistry">
-            <argument type="collection" /> <!-- payments services. this should be replaced while container is built -->
+        <service id="payum" alias="payum.static_registry" />
+
+        <service id="payum.static_registry" class="Payum\Bundle\PayumBundle\Registry\ContainerAwareRegistry">
+            <argument type="collection" /> <!-- gateways services. this should be replaced while container is built -->
             <argument type="collection" /> <!-- storages services. this should be replaced while container is built -->
-            <argument /> <!-- payment default name. this should be replaced while container is built -->
+            <argument type="collection" /> <!-- gateways factories services. this should be replaced while container is built -->
 
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
         </service>
 
-        <service id="payum.payment_factory" class="Payum\Bundle\PayumBundle\PaymentFactory">
+        <service id="payum.gateway_factory" class="Payum\Bundle\PayumBundle\GatewayFactory">
             <argument type="collection" /> <!-- this should be replaced in compiler pass -->
             <argument type="collection" /> <!-- this should be replaced in compiler pass -->
             <argument type="collection" /> <!-- this should be replaced in compiler pass -->
@@ -31,6 +37,8 @@
                 <argument>200</argument>
             </call>
         </service>
+
+        <service id="payum.iso4217" class="Payum\ISO4217\ISO4217" />
 
         <service id="payum.converter.reply_to_http_response" class="Payum\Core\Bridge\Symfony\ReplyToSymfonyResponseConverter" />
 
@@ -50,6 +58,12 @@
             <argument type="service" id="logger" on-invalid="ignore" />
 
             <tag name="payum.extension" all="true" alias="psr_logger" />
+        </service>
+
+        <service id="payum.extension.token_factory" class="Payum\Core\Extension\GenericTokenFactoryExtension">
+            <argument type="service" id="payum.security.token_factory" />
+
+            <tag name="payum.extension" all="true" alias="token_factory" />
         </service>
 
         <!-- Actions -->

@@ -2,7 +2,7 @@
 namespace Payum\Bundle\PayumBundle\DependencyInjection;
 
 use Payum\Bundle\PayumBundle\DependencyInjection\Factory\Storage\StorageFactoryInterface;
-use Payum\Bundle\PayumBundle\DependencyInjection\Factory\Payment\PaymentFactoryInterface;
+use Payum\Bundle\PayumBundle\DependencyInjection\Factory\Gateway\GatewayFactoryInterface;
 use Payum\Core\Exception\LogicException;
 use Symfony\Component\Config\Definition\ConfigurationInterface;
 use Symfony\Component\Config\Definition\Builder\TreeBuilder;
@@ -11,9 +11,9 @@ use Symfony\Component\Config\Definition\Builder\ArrayNodeDefinition;
 class MainConfiguration implements ConfigurationInterface
 {
     /**
-     * @var PaymentFactoryInterface[]
+     * @var GatewayFactoryInterface[]
      */
-    protected $paymentFactories = array();
+    protected $gatewayFactories = array();
 
     /**
      * @var StorageFactoryInterface[]
@@ -21,13 +21,13 @@ class MainConfiguration implements ConfigurationInterface
     protected $storageFactories = array();
 
     /**
-     * @param PaymentFactoryInterface[] $paymentFactories
+     * @param GatewayFactoryInterface[] $gatewayFactories
      * @param StorageFactoryInterface[] $storageFactories
      */
-    public function __construct(array $paymentFactories, array $storageFactories)
+    public function __construct(array $gatewayFactories, array $storageFactories)
     {
-        foreach ($paymentFactories as $paymentFactory) {
-            $this->paymentFactories[$paymentFactory->getName()] = $paymentFactory;
+        foreach ($gatewayFactories as $gatewayFactory) {
+            $this->gatewayFactories[$gatewayFactory->getName()] = $gatewayFactory;
         }
 
         foreach ($storageFactories as $storageFactory) {
@@ -40,47 +40,50 @@ class MainConfiguration implements ConfigurationInterface
      */
     public function getConfigTreeBuilder()
     {
-        $paymentFactories = $this->paymentFactories;
+        $gatewayFactories = $this->gatewayFactories;
         
         $tb = new TreeBuilder();
         $rootNode = $tb->root('payum');
 
-        $securityNode = $rootNode
-            ->children()
-                ->arrayNode('security')
-                    ->isRequired()
+        $securityNode = $rootNode->children()
+            ->arrayNode('security')->isRequired()
         ;
-
         $this->addSecuritySection($securityNode);
+
+        $dynamicGatewaysNode = $rootNode->children()
+            ->arrayNode('dynamic_gateways')
+        ;
+        $this->addDynamicGatewaysSection($dynamicGatewaysNode);
         
-        $paymentsPrototypeNode = $rootNode
+        $gatewaysPrototypeNode = $rootNode
             ->children()
-                ->arrayNode('payments')
+                ->arrayNode('gateways')
                     ->useAttributeAsKey('name')
                     ->prototype('array')
+                        ->performNoDeepMerging()
         ;
 
-        $this->addPaymentsSection($paymentsPrototypeNode);
+        $this->addGatewaysSection($gatewaysPrototypeNode);
         $this->addStoragesSection($rootNode);
 
-        $paymentsPrototypeNode
+        $gatewaysPrototypeNode
                 ->validate()
-                ->ifTrue(function($v) use($paymentFactories) {
-                    $selectedPayments = array();
+                ->ifTrue(function($v) use($gatewayFactories) {
+                    $selectedGateways = array();
                     foreach ($v as $name => $value) {
-                        if (isset($paymentFactories[$name])) {
-                            $selectedPayments[$name] = $paymentFactories[$name];
+                        if (isset($gatewayFactories[$name])) {
+                            $selectedGateways[$name] = $gatewayFactories[$name];
                         }
                     }
 
-                    if (0 == count($selectedPayments)) {
+                    if (0 == count($selectedGateways)) {
                         throw new LogicException(sprintf(
-                            'One payment from the %s payments available must be selected',
-                            implode(', ', array_keys($selectedPayments))
+                            'One gateway from the %s gateways available must be selected',
+                            implode(', ', array_keys($selectedGateways))
                         ));
                     }
-                    if (count($selectedPayments) > 1) {
-                        throw new LogicException('Only one payment per payment could be selected');
+                    if (count($selectedGateways) > 1) {
+                        throw new LogicException('Only one gateway per gateway could be selected');
                     }
 
                     return false;
@@ -93,13 +96,13 @@ class MainConfiguration implements ConfigurationInterface
     }
 
     /**
-     * @param ArrayNodeDefinition $paymentsPrototypeNode
+     * @param ArrayNodeDefinition $gatewaysPrototypeNode
      */
-    protected function addPaymentsSection(ArrayNodeDefinition $paymentsPrototypeNode)
+    protected function addGatewaysSection(ArrayNodeDefinition $gatewaysPrototypeNode)
     {
-        foreach ($this->paymentFactories as $factory) {
+        foreach ($this->gatewayFactories as $factory) {
             $factory->addConfiguration(
-                $paymentsPrototypeNode->children()->arrayNode($factory->getName())
+                $gatewaysPrototypeNode->children()->arrayNode($factory->getName())
             );
         }
     }
@@ -157,7 +160,7 @@ class MainConfiguration implements ConfigurationInterface
                 ->addDefaultsIfNotSet()
                 ->children()
                     ->booleanNode('all')->defaultValue(true)->end()
-                    ->arrayNode('payments')
+                    ->arrayNode('gateways')
                         ->useAttributeAsKey('key')
                         ->prototype('scalar')
                     ->end()->end()
@@ -195,12 +198,75 @@ class MainConfiguration implements ConfigurationInterface
                     }
 
                     $rc = new \ReflectionClass($key);
-                    if (false == $rc->isSubclassOf('Payum\Core\Security\TokenInterface')) {
+                    if (false == $rc->implementsInterface('Payum\Core\Security\TokenInterface')) {
                         throw new LogicException('The token class must implement `Payum\Core\Security\TokenInterface` interface');
                     }
 
                     if (count($v) > 1) {
                         throw new LogicException('Only one token storage could be configured.');
+                    }
+                }
+
+                return false;
+            })
+            ->thenInvalid('A message')
+            ->end()
+            ->useAttributeAsKey('key')
+            ->prototype('array')
+        ;
+
+        $storageNode
+            ->validate()
+            ->ifTrue(function($v) {
+                if (count($v) == 0) {
+                    throw new LogicException('At least one storage must be configured.');
+                }
+                if (count($v) > 1) {
+                    throw new LogicException('Only one storage per entry could be selected');
+                }
+
+                return false;
+            })
+            ->thenInvalid('A message')
+            ->end()
+        ;
+
+        foreach ($this->storageFactories as $factory) {
+            $factory->addConfiguration(
+                $storageNode->children()->arrayNode($factory->getName())
+            );
+        }
+    }
+
+    /**
+     * @param ArrayNodeDefinition $dynamicGatewaysNode
+     */
+    protected function addDynamicGatewaysSection(ArrayNodeDefinition $dynamicGatewaysNode)
+    {
+        $dynamicGatewaysNode->children()
+            ->booleanNode('sonata_admin')->defaultFalse()
+        ;
+
+        $storageNode = $dynamicGatewaysNode->children()
+            ->arrayNode('config_storage')
+            ->isRequired()
+            ->validate()
+            ->ifTrue(function($v) {
+                foreach($v as $key => $value) {
+                    if (false == class_exists($key)) {
+                        throw new LogicException(sprintf(
+                            'The storage entry must be a valid model class. It is set %s',
+                            $key
+                        ));
+                    }
+
+                    $rc = new \ReflectionClass($key);
+                    if (false == $rc->implementsInterface('Payum\Core\Model\GatewayConfigInterface')) {
+                        throw new LogicException('The config class must implement `Payum\Core\Model\GatewayConfigInterface` interface');
+                    }
+
+                    if (count($v) > 1) {
+                        throw new LogicException('Only one config storage could be configured.');
                     }
                 }
 

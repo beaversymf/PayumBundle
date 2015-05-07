@@ -11,12 +11,12 @@ class BuildRegistryPass implements CompilerPassInterface
      */
     public function process(ContainerBuilder $container)
     {
-        $registry = $container->getDefinition('payum');
+        $registry = $container->getDefinition('payum.static_registry');
 
-        $paymentsIds = array();
-        foreach ($container->findTaggedServiceIds('payum.payment') as $paymentsId => $tagAttributes) {
+        $gatewaysIds = array();
+        foreach ($container->findTaggedServiceIds('payum.gateway') as $gatewaysId => $tagAttributes) {
             foreach ($tagAttributes as $attributes) {
-                $paymentsIds[$attributes['payment']] = $paymentsId;
+                $gatewaysIds[$attributes['gateway']] = $gatewaysId;
             }
         }
 
@@ -27,8 +27,26 @@ class BuildRegistryPass implements CompilerPassInterface
             }
         }
 
-        $registry->replaceArgument(0, $paymentsIds);
+        $availableGatewayFactories = array();
+        $gatewaysFactoriesIds = array();
+        foreach ($container->findTaggedServiceIds('payum.gateway_factory') as $gatewayFactoryId => $tagAttributes) {
+            foreach ($tagAttributes as $attributes) {
+                $gatewaysFactoriesIds[$attributes['name']] = $gatewayFactoryId;
+
+                $availableGatewayFactories[$attributes['name']] = isset($attributes['human_name']) ?
+                    $attributes['human_name'] :
+                    $attributes['name']
+                ;
+            }
+        }
+
+        $container->setParameter('payum.available_gateway_factories', array_replace(
+            $availableGatewayFactories,
+            $container->getParameter('payum.available_gateway_factories')
+        ));
+
+        $registry->replaceArgument(0, $gatewaysIds);
         $registry->replaceArgument(1, $storagesIds);
-        $registry->replaceArgument(2, ''); // todo remove default payment
+        $registry->replaceArgument(2, $gatewaysFactoriesIds);
     }
 }
